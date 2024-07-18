@@ -1,0 +1,38 @@
+#!/usr/bin/env bpftrace
+
+//__data_loc unsigned long[] target_cpus
+//const char * reason
+tracepoint:ipi:ipi_raise
+{
+	printf("raise reason:%s\n", str(args.reason));
+}
+
+// unsigned int cpu
+// void * callsite
+// void * callback
+tracepoint:ipi:ipi_send_cpu
+{
+	printf("send cpu:%u, callsite:%s, callback:%s\n",
+		args.cpu, ksym(args.callsite), ksym(args.callback));
+}
+
+// __data_loc cpumask_t cpumask
+// void * callsite
+// void * callback
+tracepoint:ipi:ipi_send_cpumask
+{
+	//printf("send cpumask:%lu, callsite:%s, callback:%s\n",
+	//	args.cpumask, ksym(args.callsite), ksym(args.callback));
+}
+
+// const char * reason
+tracepoint:ipi:ipi_entry
+{
+	printf("entry reason:%s\n", str(args.reason));
+}
+
+// const char * reason
+tracepoint:ipi:ipi_exit
+{
+	printf("exit reason:%s\n", str(args.reason));
+}
