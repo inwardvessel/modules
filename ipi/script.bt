@@ -1,37 +1,64 @@
 #!/usr/bin/env bpftrace
 
-//__data_loc unsigned long[] target_cpus
-//const char * reason
+#include <linux/types.h>
+
+kfunc:generic_smp_call_function_single_interrupt
+{
+	@start[cpu] = nsecs;
+
+	$cpu_offset_ptr = (uint64)(kaddr("__per_cpu_offset") + (cpu * 8));
+	$cpu_offset = *$cpu_offset_ptr;
+	$call_single_queue = (uint64)kaddr("call_single_queue") + $cpu_offset;
+	$ll = (struct llist_head *)$call_single_queue;
+
+	$node = ($ll)->first;
+
+	printf("log @ %llx\n", $call_single_queue);
+
+	$i = 0;
+	while ($i < 100) {
+		if ($node == 0) {
+			break;
+		}
+		printf("\tlog node:%llx\n", $node);
+		$node = ($node)->next;
+	}
+}
+
+kretfunc:generic_smp_call_function_single_interrupt
+/@start[cpu]/
+{
+	$t1 = nsecs;
+	$t0 = @start[cpu];
+	$dt = $t1 - $t0;
+
+	@latency = hist($dt);
+	delete(@start[cpu]);
+}
+
+tracepoint:ipi:ipi_send_cpu
+{
+	printf("send cpu:%u, callsite:%s, callback:%s\n",
+		args.cpu, ksym(args.callsite), ksym(args.callback));
+	@sent[cpu, args.cpu, args.callsite, args.callback] = count();
+}
+
+tracepoint:ipi:ipi_send_cpumask
+{
+	printf("send cpumask:%lu, callsite:%s, callback:%s\n",
+		args.cpumask, ksym(args.callsite), ksym(args.callback));
+}
+
 tracepoint:ipi:ipi_raise
 {
 	printf("raise reason:%s\n", str(args.reason));
 }
 
-// unsigned int cpu
-// void * callsite
-// void * callback
-tracepoint:ipi:ipi_send_cpu
-{
-	printf("send cpu:%u, callsite:%s, callback:%s\n",
-		args.cpu, ksym(args.callsite), ksym(args.callback));
-}
-
-// __data_loc cpumask_t cpumask
-// void * callsite
-// void * callback
-tracepoint:ipi:ipi_send_cpumask
-{
-	//printf("send cpumask:%lu, callsite:%s, callback:%s\n",
-	//	args.cpumask, ksym(args.callsite), ksym(args.callback));
-}
-
-// const char * reason
 tracepoint:ipi:ipi_entry
 {
 	printf("entry reason:%s\n", str(args.reason));
 }
 
-// const char * reason
 tracepoint:ipi:ipi_exit
 {
 	printf("exit reason:%s\n", str(args.reason));
