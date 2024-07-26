@@ -1,5 +1,7 @@
 #!/usr/bin/env bpftrace
 
+#include <linux/smp.h>
+#include <linux/threads.h>
 #include <linux/types.h>
 
 kfunc:generic_smp_call_function_single_interrupt
@@ -11,17 +13,20 @@ kfunc:generic_smp_call_function_single_interrupt
 	$call_single_queue = (uint64)kaddr("call_single_queue") + $cpu_offset;
 	$ll = (struct llist_head *)$call_single_queue;
 
+	printf("csd loop, cpu:%d\n", cpu);
+
 	$node = ($ll)->first;
-
-	printf("log @ %llx\n", $call_single_queue);
-
 	$i = 0;
-	while ($i < 100) {
-		if ($node == 0) {
-			break;
-		}
-		printf("\tlog node:%llx\n", $node);
+	while ($node != 0 && $i < NR_CPUS) {
+		$node_addr = (struct llist_node *)$node;
+		$offset = sizeof(struct __call_single_node);
+		$csd_addr = $node_addr - $offset;
+		$csd = (struct __call_single_data *)$csd_addr;
+		$func = (void *)($csd)->func;
+		printf("\tcsd func:%s\n", ksym($func));
+
 		$node = ($node)->next;
+		$i++;
 	}
 }
 
