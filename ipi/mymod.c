@@ -8,7 +8,7 @@
 #include <linux/module.h>
 #include <linux/printk.h>
 #include <linux/errno.h>
-//#include <linux/spinlock.h>
+#include <linux/mutex.h>
 #include <linux/smp.h>
 #include <linux/types.h>
 
@@ -22,7 +22,7 @@ static dev_t dev;
 static struct cdev cdev;
 static struct class *class;
 static struct device *device;
-//static DEFINE_SPINLOCK(lock);
+static DEFINE_MUTEX(lock);
 
 static int mymod_cdev_open(struct inode *inode, struct file *file)
 {
@@ -38,9 +38,16 @@ static int mymod_cdev_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static void ipi_func(void *data)
+static void ipi_good(void *data)
 {
 	pr_info("%s start\n", __func__);
+	pr_info("%s end\n", __func__);
+}
+
+static void ipi_bad(void *data)
+{
+	pr_info("%s start\n", __func__);
+	mutex_lock(&lock);
 	pr_info("%s end\n", __func__);
 }
 
@@ -52,19 +59,30 @@ static long mymod_cdev_ioctl(struct file *file, unsigned int cmd,
 	const int wait = 1;
 
 	pr_info("%s start\n", __func__);
-	pr_info("%s cmd:%u, arg:%lu, func:%p\n", __func__, cmd, arg, ipi_func);
+	pr_info("%s cmd:%u, arg:%lu\n", __func__, cmd, arg);
 
 	switch (cmd) {
-		case MYMOD_A:
+		case MYMOD_LOCK:
+			mutex_lock(&lock);
+			break;
+		case MYMOD_UNLOCK:
+			mutex_unlock(&lock);
+			break;
+		case MYMOD_IPI_GOOD:
 			pr_info("%s A\n", __func__);
 
-			if (smp_call_function_single(cpu, ipi_func, data, wait)) {
+			if (smp_call_function_single(cpu, ipi_good, data, wait)) {
 				pr_err("smp call fail\n");
 			}
 
 			break;
-		case MYMOD_B:
+		case MYMOD_IPI_BAD:
 			pr_info("%s B\n", __func__);
+
+			if (smp_call_function_single(cpu, ipi_bad, data, wait)) {
+				pr_err("smp call fail\n");
+			}
+
 			break;
 		default:
 			pr_err("invalid ioctl cmd\n");

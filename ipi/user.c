@@ -32,7 +32,25 @@ int main(int argc, char *argv[])
 		goto out;
 	}
 
-	ret = ioctl(fd, MYMOD_A, arg);
+	ret = ioctl(fd, MYMOD_IPI_GOOD, arg);
+	if (ret < 0) {
+		perror("ioctl");
+		goto cleanup;
+	}
+
+	ret = ioctl(fd, MYMOD_IPI_GOOD, arg);
+	if (ret < 0) {
+		perror("ioctl");
+		goto cleanup;
+	}
+
+	ret = ioctl(fd, MYMOD_LOCK, arg);
+	if (ret < 0) {
+		perror("ioctl");
+		goto cleanup;
+	}
+
+	ret = ioctl(fd, MYMOD_IPI_BAD, arg);
 	if (ret < 0) {
 		perror("ioctl");
 		goto cleanup;
