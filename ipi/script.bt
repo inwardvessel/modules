@@ -4,6 +4,21 @@
 #include <linux/threads.h>
 #include <linux/types.h>
 
+tracepoint:csd:csd_function_entry
+{
+	@start_csd_func[cpu] = nsecs;
+}
+tracepoint:csd:csd_function_exit
+/@start_csd_func[cpu]/
+{
+	$t1 = nsecs;
+	$t0 = @start_csd_func[cpu];
+	$dt = $t1 - $t0;
+	delete(@start_csd_func[cpu]);
+
+	@csd_latency[ksym(args.func)] = hist($dt);
+}
+
 kfunc:generic_smp_call_function_single_interrupt
 {
 	@start[cpu] = nsecs;
@@ -13,7 +28,7 @@ kfunc:generic_smp_call_function_single_interrupt
 	$call_single_queue = (uint64)kaddr("call_single_queue") + $cpu_offset;
 	$ll = (struct llist_head *)$call_single_queue;
 
-	printf("csd loop, cpu:%d\n", cpu);
+	//printf("csd loop, cpu:%d\n", cpu);
 
 	$node = ($ll)->first;
 	$i = 0;
@@ -23,7 +38,7 @@ kfunc:generic_smp_call_function_single_interrupt
 		$csd_addr = $node_addr - $offset;
 		$csd = (struct __call_single_data *)$csd_addr;
 		$func = (void *)($csd)->func;
-		printf("\tcsd func:%s\n", ksym($func));
+		//printf("\tcsd func:%s\n", ksym($func));
 
 		$node = ($node)->next;
 		$i++;
@@ -41,17 +56,25 @@ kretfunc:generic_smp_call_function_single_interrupt
 	delete(@start[cpu]);
 }
 
+END
+{
+	clear(@start);
+}
+
 tracepoint:ipi:ipi_send_cpu
 {
 	printf("send cpu:%u, callsite:%s, callback:%s\n",
 		args.cpu, ksym(args.callsite), ksym(args.callback));
-	@sent[cpu, args.cpu, args.callsite, args.callback] = count();
+	if (args.callback != 0) {
+		@sent[args.cpu, ksym(args.callback)] = count();
+	}
 }
 
 tracepoint:ipi:ipi_send_cpumask
 {
-	printf("send cpumask:%lu, callsite:%s, callback:%s\n",
-		args.cpumask, ksym(args.callsite), ksym(args.callback));
+	//printf("send cpumask:%lu, callsite:%s, callback:%s\n",
+	//	args.cpumask, ksym(args.callsite), ksym(args.callback));
+	//@sent[args.cpumask, args.callback] = count();
 }
 
 tracepoint:ipi:ipi_raise
