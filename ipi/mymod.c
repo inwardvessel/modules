@@ -3,13 +3,14 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/device/class.h>
+#include <linux/errno.h>
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/printk.h>
-#include <linux/errno.h>
 #include <linux/mutex.h>
+#include <linux/printk.h>
 #include <linux/smp.h>
+#include <linux/spinlock.h>
 #include <linux/types.h>
 
 #include "mymod.h"
@@ -22,7 +23,8 @@ static dev_t dev;
 static struct cdev cdev;
 static struct class *class;
 static struct device *device;
-static DEFINE_MUTEX(lock);
+static DEFINE_MUTEX(mymutex);
+static DEFINE_SPINLOCK(myspinlock);
 
 static int mymod_cdev_open(struct inode *inode, struct file *file)
 {
@@ -44,10 +46,17 @@ static void ipi_good(void *data)
 	pr_info("%s end\n", __func__);
 }
 
-static void ipi_bad(void *data)
+static void ipi_bad_blocking(void *data)
 {
 	pr_info("%s start\n", __func__);
-	mutex_lock(&lock);
+	mutex_lock(&mymutex);
+	pr_info("%s end\n", __func__);
+}
+
+static void ipi_bad_nonblocking(void *data)
+{
+	pr_info("%s start\n", __func__);
+	spin_lock(&myspinlock);
 	pr_info("%s end\n", __func__);
 }
 
@@ -59,27 +68,44 @@ static long mymod_cdev_ioctl(struct file *file, unsigned int cmd,
 	const int wait = 1;
 
 	pr_info("%s start\n", __func__);
-	pr_info("%s cmd:%u, arg:%lu\n", __func__, cmd, arg);
 
 	switch (cmd) {
-		case MYMOD_LOCK:
-			mutex_lock(&lock);
+		case MYMOD_MUTEX_LOCK:
+			pr_info("%s acquiring mutex\n", __func__);
+			mutex_lock(&mymutex);
 			break;
-		case MYMOD_UNLOCK:
-			mutex_unlock(&lock);
+		case MYMOD_MUTEX_UNLOCK:
+			pr_info("%s releasing mutex\n", __func__);
+			mutex_unlock(&mymutex);
+			break;
+		case MYMOD_SPIN_LOCK:
+			pr_info("%s acquiring spinlock\n", __func__);
+			spin_lock(&myspinlock);
+			break;
+		case MYMOD_SPIN_UNLOCK:
+			pr_info("%s releasing spinlock\n", __func__);
+			spin_unlock(&myspinlock);
 			break;
 		case MYMOD_IPI_GOOD:
-			pr_info("%s A\n", __func__);
+			pr_info("%s smp call good\n", __func__);
 
 			if (smp_call_function_single(cpu, ipi_good, data, wait)) {
 				pr_err("smp call fail\n");
 			}
 
 			break;
-		case MYMOD_IPI_BAD:
-			pr_info("%s B\n", __func__);
+		case MYMOD_IPI_BAD_BLOCKING:
+			pr_info("%s smp call blocking\n", __func__);
 
-			if (smp_call_function_single(cpu, ipi_bad, data, wait)) {
+			if (smp_call_function_single(cpu, ipi_bad_blocking, data, wait)) {
+				pr_err("smp call fail\n");
+			}
+
+			break;
+		case MYMOD_IPI_BAD_NONBLOCKING:
+			pr_info("%s smp call non-blocking\n", __func__);
+
+			if (smp_call_function_single(cpu, ipi_bad_nonblocking, data, wait)) {
 				pr_err("smp call fail\n");
 			}
 
