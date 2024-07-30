@@ -4,70 +4,10 @@
 #include <linux/threads.h>
 #include <linux/types.h>
 
-tracepoint:csd:csd_function_entry
-{
-	@start_csd_func[cpu] = nsecs;
-}
-tracepoint:csd:csd_function_exit
-/@start_csd_func[cpu]/
-{
-	$t1 = nsecs;
-	$t0 = @start_csd_func[cpu];
-	$dt = $t1 - $t0;
-	delete(@start_csd_func[cpu]);
-
-	@csd_latency[ksym(args.func)] = hist($dt);
-}
-
-kfunc:generic_smp_call_function_single_interrupt
-{
-	@start[cpu] = nsecs;
-
-	$cpu_offset_ptr = (uint64)(kaddr("__per_cpu_offset") + (cpu * 8));
-	$cpu_offset = *$cpu_offset_ptr;
-	$call_single_queue = (uint64)kaddr("call_single_queue") + $cpu_offset;
-	$ll = (struct llist_head *)$call_single_queue;
-
-	//printf("csd loop, cpu:%d\n", cpu);
-
-	$node = ($ll)->first;
-	$i = 0;
-	while ($node != 0 && $i < NR_CPUS) {
-		$node_addr = (struct llist_node *)$node;
-		$offset = sizeof(struct __call_single_node);
-		$csd_addr = $node_addr - $offset;
-		$csd = (struct __call_single_data *)$csd_addr;
-		$func = (void *)($csd)->func;
-		//printf("\tcsd func:%s\n", ksym($func));
-
-		$node = ($node)->next;
-		$i++;
-	}
-}
-
-kretfunc:generic_smp_call_function_single_interrupt
-/@start[cpu]/
-{
-	$t1 = nsecs;
-	$t0 = @start[cpu];
-	$dt = $t1 - $t0;
-
-	@latency = hist($dt);
-	delete(@start[cpu]);
-}
-
-END
-{
-	clear(@start);
-}
-
 tracepoint:ipi:ipi_send_cpu
+/args.callback == kaddr("generic_smp_call_function_single_interrupt")/
 {
-	printf("send cpu:%u, callsite:%s, callback:%s\n",
-		args.cpu, ksym(args.callsite), ksym(args.callback));
-	if (args.callback != 0) {
-		@sent[args.cpu, ksym(args.callback)] = count();
-	}
+	@sent[args.cpu] = nsecs;
 }
 
 tracepoint:ipi:ipi_send_cpumask
@@ -77,17 +17,44 @@ tracepoint:ipi:ipi_send_cpumask
 	//@sent[args.cpumask, args.callback] = count();
 }
 
-tracepoint:ipi:ipi_raise
+kfunc:generic_smp_call_function_single_interrupt
+/@sent[cpu]/
 {
-	printf("raise reason:%s\n", str(args.reason));
+	$t1 = nsecs;
+	$t0 = @sent[cpu];
+	$dt = $t1 - $t0;
+	delete(@sent[cpu]);
+	@recv_latency = hist($dt);
+	@dispatch[cpu] = $t1;
 }
 
-tracepoint:ipi:ipi_entry
+kretfunc:generic_smp_call_function_single_interrupt
+/@dispatch[cpu]/
 {
-	printf("entry reason:%s\n", str(args.reason));
+	$t1 = nsecs;
+	$t0 = @dispatch[cpu];
+	$dt = $t1 - $t0;
+	delete(@dispatch[cpu]);
+	@dispatch_latency = hist($dt);
 }
 
-tracepoint:ipi:ipi_exit
+tracepoint:csd:csd_function_entry
+/@dispatch[cpu]/
 {
-	printf("exit reason:%s\n", str(args.reason));
+	@start_csd_func[cpu] = nsecs;
+}
+
+tracepoint:csd:csd_function_exit
+/@start_csd_func[cpu]/
+{
+	$t1 = nsecs;
+	$t0 = @start_csd_func[cpu];
+	$dt = $t1 - $t0;
+	delete(@start_csd_func[cpu]);
+	@csd_func_latency[ksym(args.func)] = hist($dt);
+}
+
+END
+{
+	clear(@sent);
 }
