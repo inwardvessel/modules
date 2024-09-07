@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 #include <linux/cdev.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/device/class.h>
 #include <linux/errno.h>
@@ -40,23 +41,23 @@ static int mymod_cdev_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static void ipi_good(void *data)
+static void callback_good(void *data)
 {
 	pr_info("%s start\n", __func__);
 	pr_info("%s end\n", __func__);
 }
 
-static void ipi_bad_blocking(void *data)
+static void callback_bad_blocking(void *data)
 {
 	pr_info("%s start\n", __func__);
 	mutex_lock(&mymutex);
 	pr_info("%s end\n", __func__);
 }
 
-static void ipi_bad_nonblocking(void *data)
+static void callback_bad_nonblocking(void *data)
 {
 	pr_info("%s start\n", __func__);
-	spin_lock(&myspinlock);
+	mdelay(1000);
 	pr_info("%s end\n", __func__);
 }
 
@@ -86,26 +87,26 @@ static long mymod_cdev_ioctl(struct file *file, unsigned int cmd,
 			pr_info("%s releasing spinlock\n", __func__);
 			spin_unlock(&myspinlock);
 			break;
-		case MYMOD_IPI_GOOD:
+		case MYMOD_CALLBACK_GOOD:
 			pr_info("%s smp call good\n", __func__);
 
-			if (smp_call_function_single(cpu, ipi_good, data, wait)) {
+			if (smp_call_function_single(cpu, callback_good, data, wait)) {
 				pr_err("smp call fail\n");
 			}
 
 			break;
-		case MYMOD_IPI_BAD_BLOCKING:
+		case MYMOD_CALLBACK_BAD_BLOCKING:
 			pr_info("%s smp call blocking\n", __func__);
 
-			if (smp_call_function_single(cpu, ipi_bad_blocking, data, wait)) {
+			if (smp_call_function_single(cpu, callback_bad_blocking, data, wait)) {
 				pr_err("smp call fail\n");
 			}
 
 			break;
-		case MYMOD_IPI_BAD_NONBLOCKING:
+		case MYMOD_CALLBACK_BAD_NONBLOCKING:
 			pr_info("%s smp call non-blocking\n", __func__);
 
-			if (smp_call_function_single(cpu, ipi_bad_nonblocking, data, wait)) {
+			if (smp_call_function_single(cpu, callback_bad_nonblocking, data, wait)) {
 				pr_err("smp call fail\n");
 			}
 

@@ -36,9 +36,9 @@ int main(int argc, char *argv[])
 		MYMOD_MUTEX_UNLOCK,
 		MYMOD_SPIN_LOCK,
 		MYMOD_SPIN_UNLOCK,
-		MYMOD_IPI_GOOD,
-		MYMOD_IPI_BAD_BLOCKING,
-		MYMOD_IPI_BAD_NONBLOCKING,
+		MYMOD_CALLBACK_GOOD,
+		MYMOD_CALLBACK_BAD_BLOCKING,
+		MYMOD_CALLBACK_BAD_NONBLOCKING,
 	};
 
 	const char prompt[] = {
@@ -47,9 +47,9 @@ int main(int argc, char *argv[])
 		"2: mutex unlock\n"
 		"3: spin lock\n"
 		"4: spin unlock\n"
-		"5: ipi good\n"
-		"6: ipi blocking\n"
-		"7: ipi spinning\n"
+		"5: callback good\n"
+		"6: callback blocking\n"
+		"7: callback spinning\n"
 		"choice? "
 	};
 
